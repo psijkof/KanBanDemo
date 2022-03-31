@@ -1,0 +1,157 @@
+﻿@using KanBanDemo.Models
+@using KanBanDemo.Models.Abstractions
+@using System.Diagnostics
+@using MudBlazor.Utilities
+
+<MudDropContainer T="IKanbanTaskItem" @ref="_dropContainer" Items="@_tasks" ItemsSelector="@((item,column) => item.Status == column)" ItemDropped="TaskUpdated" Class="d-flex flex-row" ApplyDropClassesOnDragStarted="true" CanDropClass="mud-border-success" NoDropClass="mud-border-error">
+    <ChildContent>
+        @foreach (var item in _sections)
+        {
+            <MudPaper Elevation="0" Width="400px" MinHeight="800px" Class="pa-4 ma-4 d-flex flex-column mud-background-gray rounded-lg">
+                <MudToolBar DisableGutters="true">
+                    <MudText Typo="Typo.subtitle1"><b>@item.Name</b></MudText>
+                    <MudSpacer />
+                </MudToolBar>
+                <MudDropZone T="IKanbanTaskItem" Identifier="@item.Name" Class="mud-height-full rounded-lg border-2 border-solid mud-border-lines-default pa-6 ma-8 flex-grow-1" AllowReorder="true" CanDrop="(args) => CanDropDemo(args, item)" />
+            </MudPaper>
+        }
+    </ChildContent>
+    <ItemRenderer>
+        <KanbanItem OnItemSelectedChanged="OnItemSelectChanged" TaskItem="@context" />
+    </ItemRenderer>
+</MudDropContainer>
+<MudContainer>
+    <MudChipSet>
+        @foreach (var item in SelectedTaskItems)
+        {
+            <MudChip>@item.Name / @item.Status</MudChip>
+        }
+    </MudChipSet>
+</MudContainer>
+<MudContainer>
+</MudContainer>
+
+@code {
+
+    private MudDropContainer<IKanbanTaskItem>? _dropContainer;
+    private List<IKanbanTaskItem> SelectedTaskItems = new();
+
+    private bool _addSectionOpen;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+    }
+
+    public void OnItemSelectChanged(SelectChangedEventArgs args)
+    {
+        if (args.IsSelected)
+        {
+            var sourceStatusOfItems = SelectedTaskItems.FirstOrDefault();
+            if (sourceStatusOfItems == null)
+            {
+                SelectedTaskItems.Add(args.KanbanItem.TaskItem);
+            }
+            else if (args.KanbanItem.TaskItem.Status == sourceStatusOfItems.Status)
+            {
+                SelectedTaskItems.Add(args.KanbanItem.TaskItem);
+            }
+            else
+            {
+                args.KanbanItem.ResetSelected();
+            }
+        }
+        else
+        {
+            SelectedTaskItems.Remove(args.KanbanItem.TaskItem);
+        }
+        //StateHasChanged();
+    }
+
+    /* handling board events */
+    private void TaskUpdated(MudItemDropInfo<IKanbanTaskItem> info)
+    {
+        if (SelectedTaskItems.Any())
+        {
+            var indexOffset = info.IndexInZone + 1;
+            var runningNewIndex = indexOffset;
+            foreach (var item in SelectedTaskItems.OrderBy(t => t.OrderInSection))
+            {
+                item.Status = info.DropzoneIdentifier;
+                item.OrderInSection = runningNewIndex;
+                runningNewIndex++;
+            }
+            SelectedTaskItems.RemoveAll(e => true);
+        }
+        else
+        {
+            info.Item.OrderInSection = info.IndexInZone + 1;
+            info.Item.Status = info.DropzoneIdentifier;
+        }
+
+        SortAllItems(info);
+        _dropContainer.Refresh();
+    }
+
+    private void SortAllItems(MudItemDropInfo<IKanbanTaskItem> info)
+    {
+        
+		var indexOffset =  info.DropzoneIdentifier switch
+		{
+			"In Process"  => _tasks.Count(x => x.Status == "To Do"),
+            "Done" => _tasks.Count(x => x.Status == "In Process") + _tasks.Count(x => x.Status == "To Do"),
+            _ => 0,
+		};
+		        
+        _tasks.UpdateOrder(info, item => item.OrderInSection, indexOffset);
+        // //sort all tasks
+        //var currentStatus = "";
+        //var indexInSection = 0;
+
+        //foreach(var task in _tasks)
+        //{
+        //    if (currentStatus == task.Status)
+        //    {
+        //        indexInSection++;
+        //    }
+        //    else
+        //    {
+        //        indexInSection = 1;
+        //        currentStatus = task.Status;
+        //    }
+        //    task.OrderInSection = indexInSection;
+        //}
+    }
+
+    private bool _lastCanDrop = false;
+    private bool CanDropDemo(IKanbanTaskItem item, KanBanSections destinationColumn)
+    {
+        if (item.Status == "In Process" && destinationColumn.Name == "Done")
+        {
+            return true;
+        }
+        if (destinationColumn.Name == "Done")
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /* Setup for board  */
+    private List<KanBanSections> _sections = new()
+        {
+            new KanBanSections("To Do", false, String.Empty),
+            new KanBanSections("In Process", false, String.Empty),
+            new KanBanSections("Done", false, String.Empty),
+        };
+
+    private List<IKanbanTaskItem> _tasks = new()
+        {
+            new KanbanTaskItem("Write unit test", "To Do", 0),
+            new KanbanTaskItem("Some docu stuff", "In Process", 3),
+            new KanbanTaskItem("Walking the dog", "To Do", 1),
+            new KanbanTaskItem("Petting the cat", "To Do", 2),
+        };
+
+}
